@@ -1,0 +1,59 @@
+<#
+
+get metadata from the PDFs and change filedate to a date from metadata
+
+#>
+
+$iTextDllPath = "C:\Program Files\PackageManagement\NuGet\Packages\iTextSharp.5.5.13.2\lib\itextsharp.dll"
+Add-Type -Path $iTextDllPath
+$dllPath = "C:\Program Files\PackageManagement\NuGet\Packages\BouncyCastle.1.8.9\lib\BouncyCastle.Crypto.dll"
+Add-Type -Path $dllPath
+
+$outputdir = "E:\W1\"                             ## CHANGE (with trailing \ !)
+$outputfile = "pdfmetadata1.txt"                  ## CHANGE
+$CSVDelimiter = '¬'                               ## CHANGE if needed
+$output = -join("$outputdir","$outputfile")
+
+### headerline for CSV
+$csvline = -join("FullName","$CSVDelimiter","Length","$CSVDelimiter","LastWriteTime","$CSVDelimiter","Producer","$CSVDelimiter","CreationDate","$CSVDelimiter","ModDate","$CSVDelimiter","Title","$CSVDelimiter","Creator","$CSVDelimiter","Author","$CSVDelimiter","Keywords","$CSVDelimiter","Subject","$CSVDelimiter","Application")
+Add-Content -Path "$output" $csvline
+#$filename = "E:\W1\gemeenteraad.weert.nl\documenten\Amendementen\1-PvdA-amendement-subsidie-Beej-Bertje.pdf" # for testing
+
+get-childitem "$outputdir*.pdf" -recurse |%{
+#get-childitem "$filename" -recurse |%{ # for testing
+  $a = New-Object PSObject
+  $a | Add-Member Noteproperty "FullName"  $_.FullName
+  $a | Add-Member Noteproperty "Length"  $_.Length
+  $a | Add-Member Noteproperty "LastWriteTime"  $_.LastWriteTime
+  $filename = $_.FullName
+  $raf = New-object iTextSharp.text.pdf.RandomAccessFileOrArray("$filename")
+	# load pdf properties
+	$reader = New-object iTextSharp.text.pdf.PdfReader($raf, $Nothing)
+	$reader.Info.GetEnumerator() |
+  ForEach-Object{ 
+    $a | Add-Member Noteproperty $_.Key $_.Value
+  }
+  $csvline = $null
+  $csvline = $a.FullName+$CSVDelimiter+$a.Length+$CSVDelimiter+$a.LastWriteDate+$CSVDelimiter+$a.Producer+$CSVDelimiter+$a.CreationDate+$CSVDelimiter+$a.ModDate+$CSVDelimiter+$a.Title+$CSVDelimiter+$a.Creator+$CSVDelimiter+$a.Author+$CSVDelimiter+$a.Keywords+$CSVDelimiter+$a.Subject+$CSVDelimiter+$a.Application
+	Add-Content -Path "$output" $csvline
+  #release objects for date change
+  $reader.Dispose()
+  $reader = $null
+  $raf.Close()
+  $raf = $null
+  # pick a valid date
+  If ( ($a.ModDate -ne '') -and ($a.ModDate -ne $null) ){
+    $d=[Datetime]::ParseExact($a.ModDate.substring(2,14), 'yyyyMMddHHmmss', $null) 
+  }else{
+    If ( ($a.CreationDate -ne '') -and ($a.CreationDate -ne $null) ){
+      $d = [Datetime]::ParseExact($a.CreationDate.substring(2,14), 'yyyyMMddHHmmss', $null) 
+    }else{
+      #do noting with the date
+      $d = $a.LastWriteTime
+    }
+  }
+  $f = $a.FullName
+  $a = $null
+  # set lastwritetime from metadata
+  $(Get-Item $f).LastWriteTime=$d
+}
